@@ -5,3 +5,4 @@ log/
 __pycache__/
 *.avi
 *.mp4
+.catkin_tools/
