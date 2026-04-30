@@ -6,8 +6,8 @@ Detects one blue line painted on the road and steers to keep it
 centred in the frame.  No border walls needed.
 
 Detection method:
-  - BGR filter: B >> G and B >> R  (isolates true blue tape)
-  - Centroid of the resulting mask gives the lateral line position
+  - HSV filter with tighter saturation (S>=180) to reject carpet reflections
+  - Largest contour centroid replaces raw mask centroid (ignores false positives)
   - Error = centroid_x - frame_centre → PD controller
 
 Ctrl+C always stops motors (spin_once loop).
@@ -146,28 +146,36 @@ class MinimalV4L2Cam(Node):
         h, w = frame.shape[:2]
 
         # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
-        # The stripe is pure saturated blue: H=100-135, S>150, V>100.
-        # The dark carpet shares the same hue but has S≈90-110 and V≈55-90.
-        # Using S>150 is the key filter that separates stripe from carpet.
+        # FIX: Tightened HSV range — S>=180 (was 150) and H 100-130 (was 135).
+        # The dark carpet shares the same hue but has S≈90-110, so raising the
+        # saturation threshold is the key filter that separates tape from carpet.
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask_blue = cv2.inRange(
-            hsv, np.array([100, 150, 100]), np.array([135, 255, 255]))
+            hsv, np.array([100, 180, 120]), np.array([130, 255, 255]))
 
         # ROI: rows 35-78% — full width so the line is tracked in turns too.
-        # Top cut at 35% removes background walls and far reflections.
         roi_top = int(h * 0.35)
         roi_bot = int(h * 0.78)
         roi = np.zeros_like(mask_blue)
         roi[roi_top:roi_bot, :] = 255
         mask_blue = cv2.bitwise_and(mask_blue, roi)
 
-        # ── 2. LINE POSITION via centroid ────────────────────────────────
+        # ── 2. LINE POSITION via largest contour centroid ─────────────────
+        # FIX: Use the largest contour instead of the raw mask centroid.
+        # The old approach averaged ALL blue pixels together, so scattered
+        # false-positive blobs on the carpet dragged the centroid sideways.
+        # Tracking only the biggest contour locks onto the actual tape.
         blue_px = cv2.countNonZero(mask_blue)
         line_x  = None
         if blue_px > 50:
-            M = cv2.moments(mask_blue)
-            if M['m00'] > 0:
-                line_x = int(M['m10'] / M['m00'])
+            contours, _ = cv2.findContours(
+                mask_blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                largest = max(contours, key=cv2.contourArea)
+                if cv2.contourArea(largest) > 200:   # ignore tiny blobs
+                    M = cv2.moments(largest)
+                    if M['m00'] > 0:
+                        line_x = int(M['m10'] / M['m00'])
 
         # ── 3. SMOOTHING ──────────────────────────────────────────────────
         if line_x is not None:
