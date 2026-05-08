@@ -2,22 +2,20 @@
 """
 Lane-following robot — Single Blue Centre Line.
 
-Detects one blue line painted on the road and steers to keep it
-centred in the frame.  No border walls needed.
+Detects one blue line painted on the road and outputs manual steering directions.
+Automatic serial driving has been disabled to allow independent teleop control.
 
 Detection method:
   - HSV filter with tighter saturation (S>=180) to reject carpet reflections
   - Largest contour centroid replaces raw mask centroid (ignores false positives)
-  - Error = centroid_x - frame_centre → PD controller
-
-Ctrl+C always stops motors (spin_once loop).
+  - Error = centroid_x - frame_centre -> Directional Logging
 """
 import os
 import time
 import cv2
 import numpy as np
 import rclpy
-import serial
+# import serial # Disabled for manual teleop
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
@@ -73,14 +71,14 @@ class MinimalV4L2Cam(Node):
         self.last_serial_time = time.time()
         self.prev_center_x    = None
 
-        # ── serial ────────────────────────────────────────────────────────
+        # ── serial (DISABLED FOR MANUAL TELEOP) ───────────────────────────
         self.ser = None
-        try:
-            self.ser = serial.Serial(port, baudrate=baud, timeout=0.1)
-            time.sleep(2.0)
-            self.get_logger().info(f"Serial open on {port}")
-        except Exception as e:
-            self.get_logger().warn(f"Serial failed: {e}")
+        # try:
+        #     self.ser = serial.Serial(port, baudrate=baud, timeout=0.1)
+        #     time.sleep(2.0)
+        #     self.get_logger().info(f"Serial open on {port}")
+        # except Exception as e:
+        #     self.get_logger().warn(f"Serial failed: {e}")
 
         # ── camera ────────────────────────────────────────────────────────
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -119,21 +117,25 @@ class MinimalV4L2Cam(Node):
     # ── helpers ───────────────────────────────────────────────────────────
 
     def _send_serial_cmd(self, left_pwm, right_pwm):
-        if not self.ser or not self.ser.is_open:
-            return
-        left_pwm  = max(-255, min(255, int(left_pwm)))
-        right_pwm = max(-255, min(255, int(right_pwm)))
-        try:
-            self.ser.write(f"D {left_pwm} {right_pwm} 1\n".encode())
-            self.ser.flush()
-        except Exception:
-            pass
+        # DISABLED FOR MANUAL TELEOP
+        pass
+        # if not self.ser or not self.ser.is_open:
+        #     return
+        # left_pwm  = max(-255, min(255, int(left_pwm)))
+        # right_pwm = max(-255, min(255, int(right_pwm)))
+        # try:
+        #     self.ser.write(f"D {left_pwm} {right_pwm} 1\n".encode())
+        #     self.ser.flush()
+        # except Exception:
+        #     pass
 
     def _stop_motors(self):
         """Send stop 5 times to guarantee the Arduino receives it."""
-        for _ in range(5):
-            self._send_serial_cmd(0, 0)
-            time.sleep(0.05)
+        # DISABLED FOR MANUAL TELEOP
+        pass
+        # for _ in range(5):
+        #     self._send_serial_cmd(0, 0)
+        #     time.sleep(0.05)
 
     # ── main tick ─────────────────────────────────────────────────────────
 
@@ -146,9 +148,6 @@ class MinimalV4L2Cam(Node):
         h, w = frame.shape[:2]
 
         # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
-        # FIX: Tightened HSV range — S>=180 (was 150) and H 100-130 (was 135).
-        # The dark carpet shares the same hue but has S≈90-110, so raising the
-        # saturation threshold is the key filter that separates tape from carpet.
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask_blue = cv2.inRange(
             hsv, np.array([100, 180, 120]), np.array([130, 255, 255]))
@@ -161,10 +160,6 @@ class MinimalV4L2Cam(Node):
         mask_blue = cv2.bitwise_and(mask_blue, roi)
 
         # ── 2. LINE POSITION via largest contour centroid ─────────────────
-        # FIX: Use the largest contour instead of the raw mask centroid.
-        # The old approach averaged ALL blue pixels together, so scattered
-        # false-positive blobs on the carpet dragged the centroid sideways.
-        # Tracking only the biggest contour locks onto the actual tape.
         blue_px = cv2.countNonZero(mask_blue)
         line_x  = None
         if blue_px > 50:
@@ -189,14 +184,11 @@ class MinimalV4L2Cam(Node):
             valid    = False
 
         # ── 4. DEBUG OVERLAY ──────────────────────────────────────────────
-        # Draw detected blue pixels in green
         frame[mask_blue > 0] = [0, 220, 0]
-        # ROI boundary
         cv2.line(frame, (0, roi_top), (w, roi_top), (200, 200, 0), 1)
         cv2.line(frame, (0, roi_bot), (w, roi_bot), (200, 200, 0), 1)
-        # Frame centre
         cv2.line(frame, (w//2, roi_top), (w//2, roi_bot), (100, 100, 100), 1)
-        # Detected line position
+        
         if valid:
             cv2.line(frame, (smooth_x, roi_top), (smooth_x, roi_bot),
                      (0, 0, 255), 3)
@@ -211,26 +203,22 @@ class MinimalV4L2Cam(Node):
                     f"px:{blue_px}  x:{line_x}  err:{error:+d}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # ── 5. PD CONTROL ─────────────────────────────────────────────────
-        lm = rm = 0
+        # ── 5. MANUAL DRIVING LOGIC ───────────────────────────────────────
         if valid:
-            dt    = now - self.last_error_time
-            deriv = (error - self.prev_error) / dt if dt > 0.001 else 0
-            turn  = self.kp * error + self.kd * deriv
-
-            if abs(error) <= self.deadband:
-                turn = 0
-
-            lm = max(25, min(80, self.base_pwm + turn))
-            rm = max(25, min(80, self.base_pwm - turn))
+            if error > self.deadband:
+                self.get_logger().info("DIRECTION: TURN RIGHT")
+            elif error < -self.deadband:
+                self.get_logger().info("DIRECTION: TURN LEFT")
+            else:
+                self.get_logger().info("DIRECTION: STRAIGHT")
 
             self.prev_error      = error
             self.last_error_time = now
 
-        # ── 6. SERIAL ─────────────────────────────────────────────────────
-        if now - self.last_serial_time >= self.serial_delay:
-            self._send_serial_cmd(lm, rm)
-            self.last_serial_time = now
+        # ── 6. SERIAL (AUTOMATIC DRIVING DISABLED) ────────────────────────
+        # if now - self.last_serial_time >= self.serial_delay:
+        #     self._send_serial_cmd(lm, rm)
+        #     self.last_serial_time = now
 
         # ── 7. ROS PUBLISH ────────────────────────────────────────────────
         heading_msg = Float32()
@@ -258,10 +246,10 @@ class MinimalV4L2Cam(Node):
     # ── cleanup ───────────────────────────────────────────────────────────
 
     def destroy_node(self):
-        self.get_logger().info("Stopping motors...")
-        self._stop_motors()
-        if self.ser and self.ser.is_open:
-            self.ser.close()
+        self.get_logger().info("Shutting down camera node...")
+        # self._stop_motors()
+        # if self.ser and self.ser.is_open:
+        #     self.ser.close()
         if self.writer is not None:
             self.writer.release()
         if self.cap is not None:
@@ -275,8 +263,6 @@ def main():
     rclpy.init()
     node = MinimalV4L2Cam()
 
-    # spin_once loop — Ctrl+C raises KeyboardInterrupt here,
-    # guaranteeing destroy_node() (= motor stop) always runs.
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.05)
