@@ -150,7 +150,7 @@ class MinimalV4L2Cam(Node):
         # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask_blue = cv2.inRange(
-            hsv, np.array([100, 180, 120]), np.array([130, 255, 255]))
+            hsv, np.array([90, 80, 50]), np.array([140, 255, 255]))
 
         # ROI: rows 35-78% — full width so the line is tracked in turns too.
         roi_top = int(h * 0.80)
