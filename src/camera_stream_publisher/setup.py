@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-	'cam = camera_stream_publisher.cam_node:main',
+	'cam_node = camera_stream_publisher.cam_node:main',
         ],
     },
 )
