@@ -153,24 +153,37 @@ class MinimalV4L2Cam(Node):
             hsv, np.array([100, 180, 120]), np.array([130, 255, 255]))
 
         # ROI: rows 35-78% — full width so the line is tracked in turns too.
-        roi_top = int(h * 0.35)
-        roi_bot = int(h * 0.78)
+        roi_top = int(h * 0.80)
+        roi_bot = int(h * 1.00)
         roi = np.zeros_like(mask_blue)
         roi[roi_top:roi_bot, :] = 255
         mask_blue = cv2.bitwise_and(mask_blue, roi)
 
-        # ── 2. LINE POSITION via largest contour centroid ─────────────────
+# ── 2. LINE POSITION & ANGLE via largest contour ──────────────────
         blue_px = cv2.countNonZero(mask_blue)
         line_x  = None
+        vx = 0.0  # Default vector
+        
         if blue_px > 50:
             contours, _ = cv2.findContours(
                 mask_blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if contours:
                 largest = max(contours, key=cv2.contourArea)
                 if cv2.contourArea(largest) > 200:   # ignore tiny blobs
+                    # 2A: Centroid
                     M = cv2.moments(largest)
                     if M['m00'] > 0:
                         line_x = int(M['m10'] / M['m00'])
+                    
+                    # 2B: Angle/Slope of the line
+                    line_fit = cv2.fitLine(largest, cv2.DIST_L2, 0, 0.01, 0.01)
+                    vec_x, vec_y = line_fit[0][0], line_fit[1][0]
+                    
+                    # Force vector to point "up" the screen (Y=0 is top)
+                    if vec_y > 0:
+                        vx = -float(vec_x)
+                    else:
+                        vx = float(vec_x)
 
         # ── 3. SMOOTHING ──────────────────────────────────────────────────
         if line_x is not None:
@@ -205,10 +218,19 @@ class MinimalV4L2Cam(Node):
 
 # ── 5. MANUAL DRIVING LOGIC ───────────────────────────────────────
         if valid:
-            if error > self.deadband:
-                self.get_logger().info("DIRECTION: TURN RIGHT")
+            # vx ranges from -1.0 (horizontal left) to 1.0 (horizontal right)
+            angle_threshold = 0.35 
+            
+            # Prioritize the angle of the tape for sharp curves
+            if vx > angle_threshold:
+                self.get_logger().info(f"DIRECTION: TURN RIGHT (Curve Slope: {vx:.2f})")
+            elif vx < -angle_threshold:
+                self.get_logger().info(f"DIRECTION: TURN LEFT (Curve Slope: {vx:.2f})")
+            # Fallback to position if the line is relatively vertical
+            elif error > self.deadband:
+                self.get_logger().info("DIRECTION: TURN RIGHT (Position)")
             elif error < -self.deadband:
-                self.get_logger().info("DIRECTION: TURN LEFT")
+                self.get_logger().info("DIRECTION: TURN LEFT (Position)")
             else:
                 self.get_logger().info("DIRECTION: STRAIGHT")
 
