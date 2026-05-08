@@ -203,7 +203,7 @@ class MinimalV4L2Cam(Node):
                     f"px:{blue_px}  x:{line_x}  err:{error:+d}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # ── 5. MANUAL DRIVING LOGIC ───────────────────────────────────────
+# ── 5. MANUAL DRIVING LOGIC ───────────────────────────────────────
         if valid:
             if error > self.deadband:
                 self.get_logger().info("DIRECTION: TURN RIGHT")
@@ -214,6 +214,8 @@ class MinimalV4L2Cam(Node):
 
             self.prev_error      = error
             self.last_error_time = now
+        else:
+            self.get_logger().warn("DIRECTION: LINE LOST - STOP")
 
         # ── 6. SERIAL (AUTOMATIC DRIVING DISABLED) ────────────────────────
         # if now - self.last_serial_time >= self.serial_delay:
