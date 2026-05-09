@@ -146,7 +146,7 @@ class MinimalV4L2Cam(Node):
                     top_points = largest[largest[:, :, 1] == min_y]
                     
                     # Average the X coordinates to eliminate left-corner bias
-                    avg_x = int(np.mean(top_points[:, 0, 0]))
+                    avg_x = int(np.mean(top_points[:, 0]))
                     line_x = avg_x
                     
                     # Draw a magenta circle at the true top-center look-ahead point
