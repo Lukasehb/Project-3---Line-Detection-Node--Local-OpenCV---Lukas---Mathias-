@@ -267,8 +267,8 @@ class MinimalV4L2Cam(Node):
         msg.step = w * 3;  msg.data = frame.tobytes()
         
         # Disable heavy image network transmission during manual teleop
-        # self.pub.publish(msg)
-        # self.pub_debug.publish(msg)
+        self.pub.publish(msg)
+        self.pub_debug.publish(msg)
 
         if self.writer is not None:
             self.writer.write(frame)
