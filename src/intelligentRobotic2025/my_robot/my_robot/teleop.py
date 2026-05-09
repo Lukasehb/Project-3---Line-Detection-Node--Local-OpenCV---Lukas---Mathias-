@@ -23,13 +23,13 @@ class SerialTeleop(Node):
                 break
 
             if key == "z":
-                cmd = "D 50 50 1"
+                cmd = "D 10 10 1"
             elif key == "s":
-                cmd = "D -50 -50 1"
+                cmd = "D -10 -10 1"
             elif key == "a":
-                cmd = "D 50 -50 1"
+                cmd = "D 10 -10 1"
             elif key == "e":
-                cmd = "D -50 50 1"
+                cmd = "D -10 10 1"
             else:
                 self.get_logger().info("Invalid key.")
                 continue
