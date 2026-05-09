@@ -24,6 +24,7 @@ from std_msgs.msg import Float32
 
 class MinimalV4L2Cam(Node):
     def __init__(self):
+        self.current_direction = None
         super().__init__('rpi_cam_min')
 
         # ── ROS parameters ────────────────────────────────────────────────
@@ -231,36 +232,43 @@ class MinimalV4L2Cam(Node):
         cv2.putText(frame, f"DIR: {direction}",
                     (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.9, dir_color, 2)
 
-        # ── 6. MANUAL DRIVING LOG ─────────────────────────────────────────
+
+        # ── 6. MANUAL DRIVING LOGIC (State-Change Throttled) ──────────────
         if valid:
             if error > self.deadband:
-                self.get_logger().info("DIRECTION: TURN RIGHT")
+                new_dir = "TURN RIGHT"
             elif error < -self.deadband:
-                self.get_logger().info("DIRECTION: TURN LEFT")
+                new_dir = "TURN LEFT"
             else:
-                self.get_logger().info("DIRECTION: STRAIGHT")
+                new_dir = "STRAIGHT"
+
+            # Transmit text ONLY if the direction shifts
+            if new_dir != self.current_direction:
+                self.get_logger().info(f"DIRECTION: {new_dir}")
+                self.current_direction = new_dir
 
             self.prev_error      = error
             self.last_error_time = now
         else:
-            self.get_logger().warn("DIRECTION: LINE LOST - STOP")
+            if self.current_direction != "LINE LOST":
+                self.get_logger().warn("DIRECTION: LINE LOST - STOP")
+                self.current_direction = "LINE LOST"
 
         # ── 7. ROS PUBLISH ────────────────────────────────────────────────
-        heading_msg      = Float32()
+        heading_msg = Float32()
         heading_msg.data = float(error) / (w / 2) if valid else 0.0
         self.pub_heading.publish(heading_msg)
 
-        msg                 = Image()
+        msg = Image()
         msg.header.stamp    = self.get_clock().now().to_msg()
         msg.header.frame_id = self.frame_id
-        msg.height          = h
-        msg.width           = w
-        msg.encoding        = 'bgr8'
-        msg.is_bigendian    = 0
-        msg.step            = w * 3
-        msg.data            = frame.tobytes()
-        self.pub.publish(msg)
-        self.pub_debug.publish(msg)
+        msg.height = h;  msg.width = w
+        msg.encoding = 'bgr8';  msg.is_bigendian = 0
+        msg.step = w * 3;  msg.data = frame.tobytes()
+        
+        # Disable heavy image network transmission during manual teleop
+        # self.pub.publish(msg)
+        # self.pub_debug.publish(msg)
 
         if self.writer is not None:
             self.writer.write(frame)
