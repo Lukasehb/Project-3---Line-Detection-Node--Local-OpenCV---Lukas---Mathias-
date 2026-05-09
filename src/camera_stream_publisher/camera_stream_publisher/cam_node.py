@@ -120,7 +120,9 @@ class MinimalV4L2Cam(Node):
         # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask_blue = cv2.inRange(
-            hsv, np.array([90, 80, 50]), np.array([140, 255, 255]))
+            hsv,
+            np.array([95, 130, 80]),
+            np.array([128, 255, 255]))
 
         # ROI: bottom 20% of the frame, full width
         roi_top = int(h * 0.80)
@@ -128,6 +130,9 @@ class MinimalV4L2Cam(Node):
         roi = np.zeros_like(mask_blue)
         roi[roi_top:roi_bot, :] = 255
         mask_blue = cv2.bitwise_and(mask_blue, roi)
+        
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
 
 # ── 2. LINE POSITION via Top-Center Point (Curve Prediction) ──────
         blue_px = cv2.countNonZero(mask_blue)
