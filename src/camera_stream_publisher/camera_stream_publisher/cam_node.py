@@ -129,34 +129,28 @@ class MinimalV4L2Cam(Node):
         roi[roi_top:roi_bot, :] = 255
         mask_blue = cv2.bitwise_and(mask_blue, roi)
 
-        # ── 2. LINE POSITION via Top-15% Look-ahead ───────────────────────
-        # Using the top 15% of the contour height gives a stable look-ahead
-        # point that correctly handles both left and right curves, unlike
-        # the single topmost row which is too noisy.
+# ── 2. LINE POSITION via Top-Center Point (Curve Prediction) ──────
         blue_px = cv2.countNonZero(mask_blue)
         line_x  = None
-
+        
         if blue_px > 50:
             contours, _ = cv2.findContours(
                 mask_blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if contours:
                 largest = max(contours, key=cv2.contourArea)
-                if cv2.contourArea(largest) > 200:
-                    pts   = largest[:, 0, :]        # shape (N, 2): col=x, col=y
-                    min_y = pts[:, 1].min()
-                    max_y = pts[:, 1].max()
-
-                    # Collect all points in the top 15% of the contour's
-                    # vertical extent — enough pixels for a stable average
-                    # without pulling toward the line's far-field tail.
-                    lookahead_y = min_y + 0.15 * (max_y - min_y)
-                    top_pts     = pts[pts[:, 1] <= lookahead_y]
-
-                    avg_x  = int(np.mean(top_pts[:, 0]))
+                if cv2.contourArea(largest) > 200:   # ignore tiny blobs
+                    # Extract the absolute highest Y coordinate
+                    min_y = largest[:, :, 1].min()
+                    
+                    # Isolate all contour points sharing this top Y coordinate
+                    top_points = largest[largest[:, :, 1] == min_y]
+                    
+                    # Average the X coordinates to eliminate left-corner bias
+                    avg_x = int(np.mean(top_points[:, 0, 0]))
                     line_x = avg_x
-
-                    # Magenta dot = look-ahead centre used for steering
-                    cv2.circle(frame, (avg_x, int(min_y)), 10, (255, 0, 255), -1)
+                    
+                    # Draw a magenta circle at the true top-center look-ahead point
+                    cv2.circle(frame, (avg_x, min_y), 10, (255, 0, 255), -1)
 
         # ── 3. SMOOTHING ──────────────────────────────────────────────────
         # Weight favours the NEW measurement (0.60) so sharp turns register
