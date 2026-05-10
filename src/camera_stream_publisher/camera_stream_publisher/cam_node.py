@@ -20,11 +20,14 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
+from geometry_msgs.msg import Twist
 
 
 class MinimalV4L2Cam(Node):
     def __init__(self):
         self.current_direction = None
+        self.pub_cmd_vel = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_msg = Twist()
         super().__init__('rpi_cam_min')
 
         # ── ROS parameters ────────────────────────────────────────────────
@@ -178,7 +181,7 @@ class MinimalV4L2Cam(Node):
         # Negative error → line is LEFT  of centre → robot turns LEFT
         error = smooth_x - w // 2
 
-        # ── 5. DEBUG OVERLAY ──────────────────────────────────────────────
+# ── 5. DEBUG OVERLAY & AUTO DRIVE PUBLISH ─────────────────────────
         frame[mask_blue > 0] = [0, 220, 0]                              # green mask
         cv2.line(frame, (0, roi_top), (w, roi_top), (200, 200, 0), 1)  # ROI top
         cv2.line(frame, (0, roi_bot), (w, roi_bot), (200, 200, 0), 1)  # ROI bot
@@ -191,6 +194,11 @@ class MinimalV4L2Cam(Node):
             cv2.circle(frame, (smooth_x, (roi_top + roi_bot) // 2),
                        8, (0, 255, 0), -1)                              # green dot = smooth centre
 
+            # Auto Drive Kinetics
+            self.cmd_msg.linear.x = 10.0  
+            kp = 0.05
+            self.cmd_msg.angular.z = float(-error * kp)
+
             if error > self.deadband:
                 direction = "TURN RIGHT"
                 dir_color = (0, 100, 255)
@@ -201,10 +209,17 @@ class MinimalV4L2Cam(Node):
                 direction = "STRAIGHT"
                 dir_color = (0, 255, 0)
         else:
+            # Failsafe Engine Cut
+            self.cmd_msg.linear.x = 0.0
+            self.cmd_msg.angular.z = 0.0
+
             direction = "LINE LOST - STOP"
             dir_color = (0, 0, 255)
             cv2.putText(frame, "FAILSAFE: STOP", (50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        # Transmit target velocity vector
+        self.pub_cmd_vel.publish(self.cmd_msg)
 
         # Telemetry line
         cv2.putText(frame,

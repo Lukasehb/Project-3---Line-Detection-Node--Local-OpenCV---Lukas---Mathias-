@@ -29,6 +29,7 @@ setup(
         'serial_teleop = my_robot.serial_teleop:main',
         'snelheid_teleop = my_robot.snelheid_teleop:main',
         'teleop = my_robot.teleop:main',
+        'auto_drive = my_robot.auto_drive_node:main',
     ],
     },
 
