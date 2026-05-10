@@ -25,10 +25,10 @@ from geometry_msgs.msg import Twist
 
 class MinimalV4L2Cam(Node):
     def __init__(self):
+        super().__init__('rpi_cam_min')
         self.current_direction = None
         self.pub_cmd_vel = self.create_publisher(Twist, '/cmd_vel', 10)
         self.cmd_msg = Twist()
-        super().__init__('rpi_cam_min')
 
         # ── ROS parameters ────────────────────────────────────────────────
         self.declare_parameter('device',       '/dev/video0')
