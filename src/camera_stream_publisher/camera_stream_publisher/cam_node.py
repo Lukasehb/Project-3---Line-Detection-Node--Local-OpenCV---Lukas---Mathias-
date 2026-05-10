@@ -118,20 +118,22 @@ class MinimalV4L2Cam(Node):
         now  = time.time()
         h, w = frame.shape[:2]
 
-       # ── 1. BLUE LINE DETECTION & NOISE REDUCTION ──────────────────────
-        # Smooth image to remove high-frequency sensor noise
-        blurred_frame = cv2.GaussianBlur(frame, (5, 5), 0)
-        hsv = cv2.cvtColor(blurred_frame, cv2.COLOR_BGR2HSV)
-        
+        # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask_blue = cv2.inRange(
-            hsv, np.array([90, 80, 50]), np.array([140, 255, 255]))
-            
-        # Morphological Open: Delete small false-positive pixel clusters
-        kernel = np.ones((5, 5), np.uint8)
-        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
+            hsv,
+            np.array([95, 130, 80]),
+            np.array([128, 255, 255]))
+
+        # ROI: bottom 20% of the frame, full width
+        roi_top = int(h * 0.80)
+        roi_bot = int(h * 1.00)
+        roi = np.zeros_like(mask_blue)
+        roi[roi_top:roi_bot, :] = 255
+        mask_blue = cv2.bitwise_and(mask_blue, roi)
         
-        # Morphological Close: Fill small holes inside the actual tape contour
-        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
 
 # ── 2. LINE POSITION via Dynamic Look-Ahead Bands ─────────────────
         blue_px = cv2.countNonZero(mask_blue)
@@ -193,16 +195,18 @@ class MinimalV4L2Cam(Node):
         # Negative error → line is LEFT  of centre → robot turns LEFT
         error = smooth_x - w // 2
 
-       # ── 5. DEBUG OVERLAY ──────────────────────────────────────────────
+        # ── 5. DEBUG OVERLAY ──────────────────────────────────────────────
         frame[mask_blue > 0] = [0, 220, 0]                              # green mask
-        # Frame centre reference line (full height)
-        cv2.line(frame, (w//2, 0), (w//2, h), (100, 100, 100), 1)
+        cv2.line(frame, (0, roi_top), (w, roi_top), (200, 200, 0), 1)  # ROI top
+        cv2.line(frame, (0, roi_bot), (w, roi_bot), (200, 200, 0), 1)  # ROI bot
+        cv2.line(frame, (w//2, roi_top), (w//2, roi_bot),              # frame centre
+                 (100, 100, 100), 1)
 
         if valid:
-            # Red tracking line (full height)
-            cv2.line(frame, (smooth_x, 0), (smooth_x, h), (0, 0, 255), 3)
-            # Green tracking dot (vertical centre)
-            cv2.circle(frame, (smooth_x, h // 2), 8, (0, 255, 0), -1)
+            cv2.line(frame, (smooth_x, roi_top), (smooth_x, roi_bot),
+                     (0, 0, 255), 3)                                    # red = detected line
+            cv2.circle(frame, (smooth_x, (roi_top + roi_bot) // 2),
+                       8, (0, 255, 0), -1)                              # green dot = smooth centre
 
             if error > self.deadband:
                 direction = "TURN RIGHT"
