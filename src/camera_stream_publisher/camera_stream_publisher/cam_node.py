@@ -118,22 +118,27 @@ class MinimalV4L2Cam(Node):
         now  = time.time()
         h, w = frame.shape[:2]
 
-        # ── 1. BLUE LINE DETECTION ────────────────────────────────────────
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask_blue = cv2.inRange(
-            hsv,
-            np.array([95, 130, 80]),
-            np.array([128, 255, 255]))
-
-        # ROI: bottom 20% of the frame, full width
-        roi_top = int(h * 0.80)
-        roi_bot = int(h * 1.00)
+# ── 1. BLUE LINE DETECTION & NOISE REDUCTION ──────────────────────
+        # Blur aggressively to blend fragmented tape colors
+        blurred_frame = cv2.GaussianBlur(frame, (9, 9), 0)
+        hsv = cv2.cvtColor(blurred_frame, cv2.COLOR_BGR2HSV)
+        
+        # Greatly expanded bounds for shadowed/desaturated blue
+        lower_blue = np.array([80, 40, 40])
+        upper_blue = np.array([150, 255, 255])
+        mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
+            
+        # Morphological operations to fuse fragments and delete noise
+        kernel = np.ones((9, 9), np.uint8)
+        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_CLOSE, kernel)
+        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
+        
+        # Region of Interest (ROI) Crop
+        roi_top = int(h * 0.35)
+        roi_bot = int(h * 0.78)
         roi = np.zeros_like(mask_blue)
         roi[roi_top:roi_bot, :] = 255
         mask_blue = cv2.bitwise_and(mask_blue, roi)
-        
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
 
 # ── 2. LINE POSITION (Bottom-Slice Lock) ──────────────────────────
         blue_px = cv2.countNonZero(mask_blue)
