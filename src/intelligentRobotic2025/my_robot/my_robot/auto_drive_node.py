@@ -9,8 +9,8 @@ class AutoDriveNode(Node):
         super().__init__('auto_drive_node')
         
         try:
-            self.serial_port = serial.Serial("/dev/ttyACM0", 57600, timeout=0.1)
-            self.get_logger().info("Serial port: OPEN")
+            self.serial_port = serial.Serial('/dev/ttyACM0', 57600, timeout=0.1)
+            self.get_logger().info("Serial port: OPEN (/dev/ttyACM0 @ 57600)")
         except serial.SerialException as e:
             self.get_logger().error(f"Serial port: FAILED - {e}")
             self.serial_port = None
@@ -41,11 +41,12 @@ class AutoDriveNode(Node):
         left_speed = int(self.latest_linear - self.latest_angular)
         right_speed = int(self.latest_linear + self.latest_angular)
 
-        # Hard bounds
-        left_speed = max(min(left_speed, 10), -10)
-        right_speed = max(min(right_speed, 10), -10)
+        # Hard bounds matching teleop ranges (-10 to 10 typical, clamped to safe margins)
+        left_speed = max(min(left_speed, 20), -20)
+        right_speed = max(min(right_speed, 20), -20)
 
-        command_str = f"{left_speed},{right_speed}\n"
+        # Exact syntax match: D <left> <right> 1
+        command_str = f"D {left_speed} {right_speed} 1\n"
         self.serial_port.write(command_str.encode('utf-8'))
         self.get_logger().info(f"MOTORS: {command_str.strip()}")
 
@@ -58,7 +59,7 @@ def main(args=None):
         pass
     finally:
         if auto_drive.serial_port:
-            auto_drive.serial_port.write(b"0,0\n")
+            auto_drive.serial_port.write(b"D 0 0 1\n")
             auto_drive.serial_port.close()
         auto_drive.destroy_node()
         rclpy.shutdown()
