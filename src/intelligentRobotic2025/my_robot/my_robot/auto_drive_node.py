@@ -9,7 +9,7 @@ class AutoDriveNode(Node):
         super().__init__('auto_drive_node')
         
         try:
-            self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+            self.serial_port = serial.Serial("/dev/ttyACM0", 57600, timeout=0.1)
             self.get_logger().info("Serial port: OPEN")
         except serial.SerialException as e:
             self.get_logger().error(f"Serial port: FAILED - {e}")
