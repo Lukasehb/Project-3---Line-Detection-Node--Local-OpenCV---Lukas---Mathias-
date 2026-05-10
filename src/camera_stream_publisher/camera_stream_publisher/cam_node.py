@@ -193,18 +193,16 @@ class MinimalV4L2Cam(Node):
         # Negative error → line is LEFT  of centre → robot turns LEFT
         error = smooth_x - w // 2
 
-        # ── 5. DEBUG OVERLAY ──────────────────────────────────────────────
+       # ── 5. DEBUG OVERLAY ──────────────────────────────────────────────
         frame[mask_blue > 0] = [0, 220, 0]                              # green mask
-        cv2.line(frame, (0, roi_top), (w, roi_top), (200, 200, 0), 1)  # ROI top
-        cv2.line(frame, (0, roi_bot), (w, roi_bot), (200, 200, 0), 1)  # ROI bot
-        cv2.line(frame, (w//2, roi_top), (w//2, roi_bot),              # frame centre
-                 (100, 100, 100), 1)
+        # Frame centre reference line (full height)
+        cv2.line(frame, (w//2, 0), (w//2, h), (100, 100, 100), 1)
 
         if valid:
-            cv2.line(frame, (smooth_x, roi_top), (smooth_x, roi_bot),
-                     (0, 0, 255), 3)                                    # red = detected line
-            cv2.circle(frame, (smooth_x, (roi_top + roi_bot) // 2),
-                       8, (0, 255, 0), -1)                              # green dot = smooth centre
+            # Red tracking line (full height)
+            cv2.line(frame, (smooth_x, 0), (smooth_x, h), (0, 0, 255), 3)
+            # Green tracking dot (vertical centre)
+            cv2.circle(frame, (smooth_x, h // 2), 8, (0, 255, 0), -1)
 
             if error > self.deadband:
                 direction = "TURN RIGHT"
