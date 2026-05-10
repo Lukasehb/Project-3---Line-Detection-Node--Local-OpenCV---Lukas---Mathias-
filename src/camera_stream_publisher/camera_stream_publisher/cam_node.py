@@ -135,47 +135,30 @@ class MinimalV4L2Cam(Node):
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel)
 
-# ── 2. LINE POSITION via Dynamic Look-Ahead Bands ─────────────────
+# ── 2. LINE POSITION (Bottom-Slice Lock) ──────────────────────────
         blue_px = cv2.countNonZero(mask_blue)
         line_x  = None
-        
+
         if blue_px > 50:
             contours, _ = cv2.findContours(
                 mask_blue, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if contours:
                 largest = max(contours, key=cv2.contourArea)
                 if cv2.contourArea(largest) > 200:   # ignore tiny blobs
+                    # Isolate the lowest 30 pixels of the ROI
+                    slice_top = roi_bot - 30
+                    slice_mask = np.zeros_like(mask_blue)
+                    slice_mask[slice_top:roi_bot, :] = mask_blue[slice_top:roi_bot, :]
                     
-                    # Create a clean mask containing ONLY the largest contour
-                    clean_mask = np.zeros_like(mask_blue)
-                    cv2.drawContours(clean_mask, [largest], -1, 255, thickness=cv2.FILLED)
-                    
-                    # Evaluate the tape in 3 horizontal slices (Look-ahead prediction)
-                    slices = [
-                        (int(h * 0.45), int(h * 0.60)), # Band 1: Far ahead
-                        (int(h * 0.60), int(h * 0.80)), # Band 2: Mid range
-                        (int(h * 0.80), int(h * 1.00))  # Band 3: Base
-                    ]
-                    
-                    for top, bot in slices:
-                        # Extract the horizontal band from the clean contour
-                        band_mask = np.zeros_like(clean_mask)
-                        band_mask[top:bot, :] = clean_mask[top:bot, :]
-                        
-                        # If this band contains enough tape, lock on as steering target
-                        if cv2.countNonZero(band_mask) > 100:
-                            M = cv2.moments(band_mask)
-                            if M['m00'] > 0:
-                                line_x = int(M['m10'] / M['m00'])
-                                slice_y = int(M['m01'] / M['m00'])
-                                
-                                # Draw a magenta circle at the true center of this band
-                                cv2.circle(frame, (line_x, slice_y), 10, (255, 0, 255), -1)
-                                
-                                # Highlight the active band boundaries for debugging
-                                cv2.line(frame, (0, top), (w, top), (255, 0, 255), 1)
-                                cv2.line(frame, (0, bot), (w, bot), (255, 0, 255), 1)
-                                break # Target found, ignore lower bands
+                    # Calculate center of mass for the slice only
+                    M = cv2.moments(slice_mask)
+                    if M['m00'] > 0:
+                        line_x = int(M['m10'] / M['m00'])
+                    else:
+                        # Fallback to entire contour if tape exits the bottom slice early
+                        M_full = cv2.moments(largest)
+                        if M_full['m00'] > 0:
+                            line_x = int(M_full['m10'] / M_full['m00'])
 
         # ── 3. SMOOTHING ──────────────────────────────────────────────────
         # Weight favours the NEW measurement (0.60) so sharp turns register
