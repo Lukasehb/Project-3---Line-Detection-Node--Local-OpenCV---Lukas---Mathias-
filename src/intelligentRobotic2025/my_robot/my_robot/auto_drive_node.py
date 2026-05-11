@@ -19,7 +19,7 @@ class AutoDriveNode(Node):
 
         # 2 Hz Throttle Limit
         self.last_send_time = 0.0
-        self.throttle_interval = 0.5 
+        self.throttle_interval = 2.0 
 
         self.latest_linear = 0.0
         self.latest_angular = 0.0
