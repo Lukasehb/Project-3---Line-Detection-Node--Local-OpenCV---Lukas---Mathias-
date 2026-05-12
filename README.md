@@ -64,22 +64,66 @@ source install/setup.bash
 Launch the camera node with default or custom parameters:
 
 ```bash
-ros2 run <your_package_name> cam_node --ros-args \
-  -p device:=/dev/video0 \
-  -p width:=640 \
-  -p height:=480 \
-  -p kp:=0.05 \
-  -p deadband:=20
+cd ~/Project-3---Line-Detection-Node--Local-OpenCV---Lukas---Mathias-
+colcon build --symlink-install
+source install/setup.bash
+
+# with all parameters + recording
+ros2 run camera_stream_publisher cam_node --ros-args -p device:=/dev/video0 -p width:=640 -p height:=480 -p fps:=15.0 -p fourcc:=MJPG -p record:=false
+
+
+
+cd ~/Project-3---Line-Detection-Node--Local-OpenCV---Lukas---Mathias-
+colcon build
+source install/setup.bash
+ros2 run my_robot auto_drive
 ```
 
-Replace `<your_package_name>` with the actual package name (check `setup.py` and `package.xml` for exact entry point names).
+## 6. rqt with ssh
 
-## 6. Parameters
+Reconnect with the -X or -Y flag:
+
+Bash
+ssh -X ubuntu@<rpi_ip_address>
+Verify the DISPLAY variable:
+Once logged in, run:
+
+Bash
+    echo $DISPLAY
+    ```
+    It should return something like `localhost:10.0`. If it is empty, X11 forwarding is not active.
+
+### Persistent Fix: Install X11 Backend
+If running directly on the Pi with a monitor and the error persists, ensure the X11 development libraries are installed:
+
+```bash
+sudo apt update
+sudo apt install libxcb-xinerama0
+Headless Operation (No Monitor)
+To run rqt without a physical display, use a virtual framebuffer like xvfb or the "offscreen" plugin (though offscreen will not show a UI):
+```
+Using the Offscreen plugin (to test if the app runs):
+
+ ```Bash
+export QT_QPA_PLATFORM=offscreen
+rqt
+Using VNC:
+Install and start a VNC server (like tightvncserver or wayvnc), connect via a VNC client, and run the command within that desktop session.
+```
+Environment Variable Override
+Force the application to use the X11 plugin specifically if multiple backends are present:
+
+```Bash
+export QT_QPA_PLATFORM=xcb
+rqt
+```
+
+## 7. Parameters
 
 | Parameter | Default | Description |
 |---|---:|---|
 | `kp` | `0.05` | Proportional gain for steering |
-| `base_pwm` | `50` | Base motor power (unused in automatic control example) |
+| `base_pwm` | `10` | Base motor power (unused in automatic control example) |
 | `deadband` | `20` | Pixel threshold before steering kicks in |
 | `record` | `False` | Toggle video recording to file |
 | `record_path` | `~/robot_debug.avi` | Storage path for debug video |
