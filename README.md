@@ -99,17 +99,19 @@ If running directly on the Pi with a monitor and the error persists, ensure the 
 ```bash
 sudo apt update
 sudo apt install libxcb-xinerama0
+```
 Headless Operation (No Monitor)
 To run rqt without a physical display, use a virtual framebuffer like xvfb or the "offscreen" plugin (though offscreen will not show a UI):
-```
+
 Using the Offscreen plugin (to test if the app runs):
 
  ```Bash
 export QT_QPA_PLATFORM=offscreen
 rqt
+```
 Using VNC:
 Install and start a VNC server (like tightvncserver or wayvnc), connect via a VNC client, and run the command within that desktop session.
-```
+
 Environment Variable Override
 Force the application to use the X11 plugin specifically if multiple backends are present:
 
